@@ -84,6 +84,12 @@ unbedenkliche Meldungen zurück.
 
 ## Deployment (Render)
 
+Hinweis zu Lovable: Lovable hostet nur Frontends (plus Supabase als Backend) und kann keinen
+eigenen Node-Server mit Secrets betreiben – ein Webhook ließe sich dort also nicht versteckt
+serverseitig ablegen. Deshalb ist das Projekt für Node-Hosts vorbereitet, die Environment-Variablen
+unterstützen (Render, Railway, Fly.io, eigener Server). Der Code bleibt dabei ein reines
+HTML/CSS/JS-Frontend, lässt sich also jederzeit auch in ein React/Vite-Setup übernehmen.
+
 `render.yaml` ist im Repo enthalten, damit lässt sich der Service direkt anlegen
 (New → Blueprint → Repo auswählen). Alternativ manuell:
 
