@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mod-application
+    runtime: node
+    plan: free
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DISCORD_WEBHOOK_URL
+        sync: false

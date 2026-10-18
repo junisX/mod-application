@@ -1,0 +1,14 @@
+{
+  "name": "mod-application",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bewerbungsformular fuer Community-Moderatoren (Twitch / Discord)",
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  }
+}
