@@ -19,8 +19,13 @@ Das Projekt hat **keine Dependencies**: das Backend nutzt ausschließlich Node-B
 │   ├── application.js  # Fragen-Schema, Validierung, Discord-Embed
 │   ├── rate-limit.js   # In-Memory Limit gegen Spam
 │   └── env.js          # Lädt .env nur lokal (im Hosting greifen die echten Env-Vars)
+├── api/
+│   └── apply.js        # Vercel-Funktion für das GitHub-Pages-Frontend
+├── deploy/
+│   └── Dockerfile      # Für Docker-Hosts
+├── .github/workflows/
+│   └── pages.yml       # Deployment des Frontends auf GitHub Pages
 ├── .env.example
-├── Dockerfile
 ├── render.yaml
 ├── package.json
 └── README.md
@@ -40,11 +45,13 @@ Danach läuft die Seite auf <http://localhost:3000>. Node-Version: **18.17 oder 
 | Variable              | Pflicht | Beschreibung                                  |
 | --------------------- | ------- | --------------------------------------------- |
 | `DISCORD_WEBHOOK_URL` | ja      | Webhook des Ziel-Channels. Wird nur serverseitig gelesen. |
-| `PORT`                | nein    | Port des Servers, Standard `3000`.            |
+| `PORT`                | nein    | Port des Node-Servers, Standard `3000`.       |
+| `ALLOWED_ORIGINS`     | nein    | Erlaubte Frontend-Domains für die Vercel-Funktion, Standard `https://junisx.github.io,http://localhost:3000`. |
 
-Der Webhook liegt ausschließlich im Backend. Das Frontend spricht nur `POST /api/apply` auf der
-eigenen Domain an, es gibt keine Webhook-URL und keine Secrets im Client-Code, in `localStorage`
-oder im `sessionStorage`.
+Der Webhook liegt ausschließlich im Backend. Im Frontend steht nur die API-Adresse
+(`<meta name="api-base">`), und die ist kein Secret: sie zeigt entweder auf die eigene Domain
+(Node-Host) oder auf die Vercel-Funktion (GitHub Pages). Es gibt keine Webhook-URL und keine
+Secrets im Client-Code, in `localStorage` oder im `sessionStorage`.
 
 ## API
 
@@ -77,18 +84,54 @@ Antwort: `{ "ok": true }` oder `{ "ok": false, "error": "..." }` mit passendem S
 (`400` Validierung, `413` zu groß, `415` falscher Content-Type, `422` unter 13 Jahren,
 `429` Rate Limit, `502`/`503` Discord nicht erreichbar).
 
+Die Vercel-Variante beantwortet zusätzlich `OPTIONS` (CORS-Preflight) und setzt
+`Access-Control-Allow-Origin` ausschließlich für die Domains aus `ALLOWED_ORIGINS`.
+
 `GET /api/health` – `{ "status": "ok" }` für den Health-Check des Hostings.
 
 Die Antworttexte für den Nutzer sind in `frontend/app.js` hinterlegt; das Backend liefert nur
 unbedenkliche Meldungen zurück.
 
-## Deployment (Render)
+## Deployment
+
+### GitHub Pages (Frontend) + Vercel (API)
+
+Aktueller Aufbau: die Oberfläche liegt statisch auf GitHub Pages, die API läuft als
+Serverless-Funktion auf Vercel. Der Webhook existiert nur in der Vercel-Umgebung, das Frontend
+kennt ihn nicht.
+
+**Vercel**
+
+1. Repository importieren, Framework Preset **Other** (nicht als Container – ein `Dockerfile` im
+   Root lässt Vercel sonst einen Container-Service bauen und ignoriert `api/`; deshalb liegt es in
+   `deploy/`).
+2. Unter *Settings → Environment Variables* die Variable `DISCORD_WEBHOOK_URL` für *Production*
+   anlegen (der Wert ist danach nicht mehr auslesbar, Typ `sensitive`).
+3. Deployen: `vercel --prod` – die API ist dann unter `https://<projekt>.vercel.app/api/apply`
+   erreichbar.
+
+**GitHub Pages**
+
+1. *Settings → Pages* → Source **GitHub Actions** (einmalig).
+2. *Settings → Secrets and variables → Actions → Variables* → `API_BASE` auf die Vercel-Domain
+   setzen, z. B. `https://mod-bewerbung.vercel.app`.
+3. `.github/workflows/pages.yml` veröffentlicht `frontend/` und ersetzt dabei den Platzhalter
+   `__API_BASE__` in `index.html` durch `API_BASE`.
+
+Die Funktion erlaubt per CORS nur die in `ALLOWED_ORIGINS` gelisteten Domains
+(Standard: `https://junisx.github.io,http://localhost:3000`).
 
 Hinweis zu Lovable: Lovable hostet nur Frontends (plus Supabase als Backend) und kann keinen
-eigenen Node-Server mit Secrets betreiben – ein Webhook ließe sich dort also nicht versteckt
-serverseitig ablegen. Deshalb ist das Projekt für Node-Hosts vorbereitet, die Environment-Variablen
-unterstützen (Render, Railway, Fly.io, eigener Server). Der Code bleibt dabei ein reines
-HTML/CSS/JS-Frontend, lässt sich also jederzeit auch in ein React/Vite-Setup übernehmen.
+eigenen Server mit Secrets betreiben – ein Webhook ließe sich dort also nicht versteckt
+serverseitig ablegen. Ein separates Backend ist dafür nicht nötig, die Vercel-Funktion ist
+dieselbe Logik wie der Node-Server. Das Frontend bleibt reines HTML/CSS/JS und lässt sich
+jederzeit in ein React/Vite-Setup übernehmen.
+
+### Alles auf einem Node-Host (Render, Railway, Fly.io, eigener Server)
+
+Wenn Frontend und API auf derselben Domain liegen sollen, übernimmt `backend/server.js` beides –
+dann bleibt `__API_BASE__` in `index.html` stehen und die Seite spricht `/api/apply` auf der
+eigenen Domain an.
 
 `render.yaml` ist im Repo enthalten, damit lässt sich der Service direkt anlegen
 (New → Blueprint → Repo auswählen). Alternativ manuell:
@@ -99,25 +142,25 @@ HTML/CSS/JS-Frontend, lässt sich also jederzeit auch in ein React/Vite-Setup ü
 - Health Check Path: `/api/health`
 
 Danach im Dashboard unter **Environment** die Variable `DISCORD_WEBHOOK_URL` als Secret setzen
-(in `render.yaml` steht sie mit `sync: false`, damit sie nicht im Repo landet). Nach dem
-Deployment ist die API automatisch unter derselben Domain wie das Frontend erreichbar.
+(in `render.yaml` steht sie mit `sync: false`, damit sie nicht im Repo landet).
 
-Docker (Railway, Fly.io, VPS, Coolify …):
+### Docker
 
 ```bash
-docker build -t mod-application .
+docker build -f deploy/Dockerfile -t mod-application .
 docker run -p 3000:3000 -e DISCORD_WEBHOOK_URL=... mod-application
 ```
 
-`.env` und `.env.*` sind in `.gitignore` und `.dockerignore` ausgeschlossen und landen weder im
-Repository noch im Image.
+`.env` und `.env.*` sind in `.gitignore`, `.dockerignore` und `.vercelignore` ausgeschlossen und
+landen weder im Repository noch im Image oder im Deployment.
 
 ## Sicherheit
 
 - Webhook nur serverseitig über `DISCORD_WEBHOOK_URL`
 - Serverseitige Validierung gegen feste Slugs, Antworten werden nie ungeprüft übernommen
 - Altersprüfung zusätzlich im Backend (`under_13` → `422`)
-- Rate Limit: 5 Bewerbungen pro 10 Minuten und IP, mindestens 2 Sekunden Abstand
+- Rate Limit: 5 Bewerbungen pro 10 Minuten und IP, mindestens 2 Sekunden Abstand (im
+  Serverless-Betrieb gilt das Limit pro Instanz)
 - Honeypot-Feld gegen einfache Bots, Body-Limit von 8 KB, nur `application/json` (mit `charset`-Toleranz)
 - Es werden nur die zehn Fragen verarbeitet – keine Namen, Adressen, Telefonnummern, Logins oder Tokens
 - Discord-Fehler werden geloggt, aber nie im Detail ans Frontend weitergegeben

@@ -101,6 +101,10 @@ const QUESTIONS = [
 
 const DEFAULT_ERROR = 'Deine Bewerbung konnte gerade nicht gesendet werden. Bitte versuche es erneut.';
 
+// Wird beim Deployment auf GitHub Pages durch die API-Domain ersetzt, sonst gleiche Domain wie das Frontend.
+const apiBase = document.querySelector('meta[name="api-base"]').content.trim();
+const submitUrl = `${apiBase === '__API_BASE__' ? '' : apiBase}/api/apply`;
+
 const views = Object.fromEntries(
   [...document.querySelectorAll('.view')].map((view) => [view.id.replace('view-', ''), view]),
 );
@@ -212,7 +216,7 @@ async function submit() {
   syncNavigation();
 
   try {
-    const response = await fetch('/api/apply', {
+    const response = await fetch(submitUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
